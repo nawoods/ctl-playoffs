@@ -5,8 +5,9 @@ import Html exposing (..)
 import Html.Attributes exposing (style)
 import Html.Events exposing (..)
 import Http
-import Json.Decode exposing (Decoder, map, map2, map5, field, int, string, index, list)
+import Json.Decode exposing (Decoder, map4, map2, map5, field, int, string, index, list)
 import Debug exposing (toString)
+import String exposing (left)
 
 
 
@@ -47,6 +48,8 @@ type alias DivisionStandings =
 
 type alias PlayerStandings =
   { player : String
+  , wins : Int 
+  , losses : Int 
   , points : Int 
   }
 
@@ -152,7 +155,7 @@ viewInfoContent : State -> Html Msg
 viewInfoContent state =
       case state.infoView of
         Standings ->
-          viewStandings state.standings
+          viewStandings (List.filter isDiv1 state.standings)
         Matches ->
           viewMatches state.matches
 
@@ -166,23 +169,37 @@ viewDivisionStandings divisionStandings =
     [ 
       div [] [text ("Division " ++ divisionStandings.name)]
     , table []
-        (  viewDivisionHeaderRow 
-        :: (List.map viewPlayerStandings divisionStandings.players)
-        )
+        ( viewDivisionHeaderRow :: viewPlayerRows divisionStandings )
     ]
   
 viewDivisionHeaderRow : Html Msg
 viewDivisionHeaderRow =
   tr [] [
     td [] [text "Player"]
+  , td [] [text "W-L"]
   , td [] [text "Pts"]
+  , td [] [text "Pts Back"]
   ]
 
-viewPlayerStandings : PlayerStandings -> Html Msg
-viewPlayerStandings playerStandings =
+viewPlayerRows : DivisionStandings -> List (Html Msg)
+viewPlayerRows divisionStandings =
+  List.map (viewPlayerRow (winnerRelPts divisionStandings)) divisionStandings.players
+
+viewPlayerRow : Float -> PlayerStandings -> Html Msg
+viewPlayerRow leaderRelPts playerStandings =
   tr []
     [ td [] [text playerStandings.player]
+    , td [] [text 
+        ((toString playerStandings.wins)
+        ++ "-"
+        ++ (toString playerStandings.losses)
+        )]
     , td [] [text (toString playerStandings.points)]
+    , td [] [text (
+      if leaderRelPts == relPts playerStandings
+      then "--"
+      else toString (leaderRelPts - relPts playerStandings)
+    )]
     ]
 
 
@@ -194,8 +211,7 @@ viewMatches matches =
       div [] [text "Matches"]
     , table []
         (  viewMatchesHeaderRow 
-        :: (List.map viewMatch matches)
-        )
+        :: (List.map viewMatch (List.filter isDiv1Match matches)))
     ]
 
 viewMatchesHeaderRow : Html Msg
@@ -218,7 +234,13 @@ viewMatch match =
       )]
     ]
 
+isDiv1 : DivisionStandings -> Bool
+isDiv1 division =
+  left 1 division.name == "1"
 
+isDiv1Match : Match -> Bool
+isDiv1Match match =
+  left 1 match.division == "1"
 
 
 -- HTTP
@@ -243,8 +265,10 @@ divisionStandingsDecoder =
 
 playerStandingsDecoder : Decoder PlayerStandings
 playerStandingsDecoder =
-  map2 PlayerStandings
+  map4 PlayerStandings
     (field "name" string)
+    (field "wins" int)
+    (field "losses" int)
     (field "points" int)
 
 
@@ -267,3 +291,16 @@ matchDecoder =
     (field "winner_games" int)
     (field "loser" string)
     (field "loser_games" int)
+
+
+
+-- CALC
+relPts : PlayerStandings -> Float
+relPts player =
+  toFloat player.points - (3.5 * toFloat (player.wins + player.losses))
+
+winnerRelPts : DivisionStandings -> Float
+winnerRelPts division =
+  List.foldl max 0 (List.map relPts division.players)
+  
+  
