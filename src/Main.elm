@@ -37,6 +37,7 @@ type Model
 type alias State =
   { standings : List DivisionStandings
   , matches : List Match
+  , infoView : InfoView
   }
 
 type alias DivisionStandings = 
@@ -57,6 +58,10 @@ type alias Match =
   , loserGames : Int
   }
 
+type InfoView 
+  = Standings
+  | Matches
+
 
 init : () -> (Model, Cmd Msg)
 init _ =
@@ -71,6 +76,7 @@ init _ =
 type Msg
   = GotStandings (Result Http.Error (List DivisionStandings))
   | GotMatches (Result Http.Error (List Match))
+  | SetInfoView InfoView
 
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
@@ -85,16 +91,23 @@ update msg model =
       case result of
         Ok matches ->
           case model of 
-            Failure error ->
-              (Failure error, Cmd.none)
-            LoadingStandings ->
-              (LoadingStandings, Cmd.none)
             LoadingMatches standings ->
-              (Success { standings = standings, matches = matches }, Cmd.none)
-            Success state ->
-              (Success state, Cmd.none)
+              (Success
+                { standings = standings
+                , matches = matches 
+                , infoView = Standings
+                }, Cmd.none)
+            _ ->
+              (model, Cmd.none)
         Err error ->
           (Failure error, Cmd.none)
+    SetInfoView infoView ->
+      case model of
+        Success state ->
+          (Success { state | infoView = infoView }, Cmd.none)
+        _ ->
+          (model, Cmd.none)
+      
           
 
 
@@ -123,10 +136,25 @@ view model =
     LoadingMatches _ ->
       div [] [text "just a bit more"]
     Success state ->
-      div [] 
-        [ viewStandings state.standings
-        , viewMatches state.matches
+      div []
+        [ viewInfoButtons
+        , viewInfoContent state
         ]
+
+viewInfoButtons : Html Msg
+viewInfoButtons =
+  div [] 
+    [ button [onClick (SetInfoView Standings)] [text "Standings"]
+    , button [onClick (SetInfoView Matches)] [text "Matches"]
+    ]
+
+viewInfoContent : State -> Html Msg
+viewInfoContent state =
+      case state.infoView of
+        Standings ->
+          viewStandings state.standings
+        Matches ->
+          viewMatches state.matches
 
 viewStandings : List DivisionStandings -> Html Msg
 viewStandings standings =
