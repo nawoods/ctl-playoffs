@@ -1,13 +1,15 @@
 module Main exposing (main)
 
 import Browser
-import Html exposing (..)
-import Html.Attributes exposing (style)
-import Html.Events exposing (..)
+import Css exposing (backgroundColor, rgb)
+import Html.Styled exposing (..)
+import Html.Styled.Attributes exposing (style)
+import Html.Styled.Events exposing (..)
 import Http
 import Json.Decode exposing (Decoder, map4, map2, map5, field, int, string, index, list)
 import Debug exposing (toString)
 import String exposing (left)
+import Html.Styled.Attributes exposing (css)
 
 
 
@@ -20,7 +22,7 @@ main =
     { init = init
     , update = update
     , subscriptions = subscriptions
-    , view = view
+    , view = view >> toUnstyled
     }
 
 
@@ -157,7 +159,15 @@ viewInfoContent state =
         Standings ->
           viewStandings (List.filter isDiv1 state.standings)
         Matches ->
-          viewMatches state.matches
+          case (List.head state.standings) of
+            Just division ->
+              div []
+              [
+                viewDivisionMatchesTable state.matches division
+              , viewMatches state.matches
+              ]
+            Nothing ->
+              viewMatches state.matches
 
 viewStandings : List DivisionStandings -> Html Msg
 viewStandings standings =
@@ -216,16 +226,18 @@ viewMatches matches =
 
 viewMatchesHeaderRow : Html Msg
 viewMatchesHeaderRow =
-  tr [] [
-    td [] [text "Winner"]
-  , td [] [text "Loser"]
-  , td [] [text "Score"]
+  tr []
+    [ td [] [text "Div"]
+    , td [] [text "Winner"]
+    , td [] [text "Loser"]
+    , td [] [text "Score"]
   ]
 
 viewMatch : Match -> Html Msg
 viewMatch match =
   tr [] 
-    [ td [] [text match.winner]
+    [ td [] [text match.division]
+    , td [] [text match.winner]
     , td [] [text match.loser]
     , td [] [text (
         (toString match.winnerGames) 
@@ -234,13 +246,73 @@ viewMatch match =
       )]
     ]
 
+viewDivisionMatchesTable : List Match -> DivisionStandings -> Html Msg
+viewDivisionMatchesTable matches division =
+  table []
+  (
+    tr [] (playerNameRow (divisionPlayers division)) :: 
+    (
+      List.map (playerNameRowMapping (divisionPlayers division) matches) (divisionPlayers division)
+    )
+  )
+
+playerNameRowMapping : List String -> List Match -> (String -> Html Msg)
+playerNameRowMapping players matches =
+  (\x -> tr [] ((text x) :: (playerMatchesRow players matches x)))
+
+playerNameRow : List String -> List (Html Msg)
+playerNameRow players =
+  case players of
+    [] -> [text ""]
+    _  -> (td [] [text ""]) :: List.map (\y -> td [] [text y]) players
+
+playerMatchesRow : List String -> List Match -> String -> List (Html Msg)
+playerMatchesRow players matches player =
+  case List.head players of
+    Nothing -> [text ""]
+    Just _  ->
+      case players of 
+        []    -> [text ""]
+        x::xs -> 
+          td 
+            (if x == player then [ 
+              css [
+                backgroundColor (rgb 150 150 150)
+              ]
+            ] else [])
+            [text (matchResult matches player x)] 
+          :: (playerMatchesRow xs matches player)
+
+matchResult : List Match -> String -> String -> String
+matchResult matches player1 player2 =
+  case findMatch matches player1 player2 of
+    Just x ->
+      (toString x.winnerGames) ++ " - " ++ (toString x.loserGames)
+    Nothing ->
+      case findMatch matches player2 player1 of
+        Just y ->
+          (toString y.loserGames) ++ " - " ++ (toString y.winnerGames)
+        Nothing ->
+          ""
+
+findMatch : List Match -> String -> String -> Maybe Match
+findMatch matches winner loser =
+  case List.filter (\x -> x.winner == winner && x.loser == loser) matches of
+    x::_ -> Just x
+    []    -> Nothing
+
+
 isDiv1 : DivisionStandings -> Bool
 isDiv1 division =
-  left 1 division.name == "1"
+  String.left 1 division.name == "1"
 
 isDiv1Match : Match -> Bool
 isDiv1Match match =
-  left 1 match.division == "1"
+  String.left 1 match.division == "1"
+
+divisionPlayers : DivisionStandings -> List String
+divisionPlayers division = 
+  List.map (\ x -> x.player ) division.players
 
 
 -- HTTP
