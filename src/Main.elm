@@ -10,6 +10,9 @@ import Json.Decode exposing (Decoder, map4, map2, map5, field, int, string, inde
 import Debug exposing (toString)
 import String exposing (left)
 import Html.Styled.Attributes exposing (css)
+import List exposing (reverse)
+import List exposing (repeat)
+import List exposing (length)
 
 
 
@@ -67,6 +70,12 @@ type InfoView
   = Standings
   | Matches
 
+type ProRelStatus
+  = Div1 Tri Tri Tri -- playoffs playoffreg reg
+  -- | Ctl Tri Tri Tri Tri -- promo playoffpromo playoffreg reg
+  -- | Tnp Tri Tri  -- promo reg
+
+type Tri = Yes | No | Perhaps
 
 init : () -> (Model, Cmd Msg)
 init _ =
@@ -159,15 +168,20 @@ viewInfoContent state =
         Standings ->
           viewStandings (List.filter isDiv1 state.standings)
         Matches ->
-          case (List.head state.standings) of
-            Just division ->
-              div []
-              [
-                viewDivisionMatchesTable state.matches division
-              , viewMatches state.matches
-              ]
-            Nothing ->
-              viewMatches state.matches
+          div []
+            (  
+              List.map (viewDivisionMatchesTable state.matches) (List.filter isDiv1 state.standings)
+              ++ [viewMatches state.matches]
+            )
+          -- case (List.head state.standings) of
+            -- Just division ->
+            --   div []
+            --   [
+            --     viewDivisionMatchesTable state.matches division
+            --   , viewMatches state.matches
+            --   ]
+            -- Nothing ->
+            --   viewMatches state.matches
 
 viewStandings : List DivisionStandings -> Html Msg
 viewStandings standings =
@@ -248,13 +262,16 @@ viewMatch match =
 
 viewDivisionMatchesTable : List Match -> DivisionStandings -> Html Msg
 viewDivisionMatchesTable matches division =
-  table []
-  (
-    tr [] (playerNameRow (divisionPlayers division)) :: 
+  div [] [
+    div [] [text ("Division " ++ division.name)]
+    , table []
     (
-      List.map (playerNameRowMapping (divisionPlayers division) matches) (divisionPlayers division)
+      tr [] (playerNameRow (sortedDivisionPlayers division)) :: 
+      (
+        removeLastIfExists (List.map (playerNameRowMapping (sortedDivisionPlayers division) matches) (sortedDivisionPlayers division))
+      )
     )
-  )
+  ]
 
 playerNameRowMapping : List String -> List Match -> (String -> Html Msg)
 playerNameRowMapping players matches =
@@ -263,25 +280,38 @@ playerNameRowMapping players matches =
 playerNameRow : List String -> List (Html Msg)
 playerNameRow players =
   case players of
-    [] -> [text ""]
-    _  -> (td [] [text ""]) :: List.map (\y -> td [] [text y]) players
+    []     -> [text ""]
+    _::xs  -> (td [] [text ""]) :: List.reverse (List.map (\y -> td [] [text y]) xs)
 
 playerMatchesRow : List String -> List Match -> String -> List (Html Msg)
 playerMatchesRow players matches player =
   case List.head players of
     Nothing -> [text ""]
     Just _  ->
-      case players of 
+      case reverse players of 
         []    -> [text ""]
+        [_]   -> [text ""]
         x::xs -> 
-          td 
-            (if x == player then [ 
-              css [
-                backgroundColor (rgb 150 150 150)
-              ]
-            ] else [])
-            [text (matchResult matches player x)] 
-          :: (playerMatchesRow xs matches player)
+          if x == player then
+            repeat (length xs) (
+              td [
+                css [
+                  backgroundColor (rgb 150 150 150)
+                ]
+              ] []
+            )
+          else
+            td [] [text (matchResult matches player x)]
+          :: (playerMatchesRow (reverse xs) matches player)
+            
+          -- td 
+          --   (if x == player then [ 
+          --     css [
+          --       backgroundColor (rgb 150 150 150)
+          --     ]
+          --   ] else [])
+          --   [text (matchResult matches player x)] 
+          -- :: (playerMatchesRow (reverse xs) matches player)
 
 matchResult : List Match -> String -> String -> String
 matchResult matches player1 player2 =
@@ -313,6 +343,16 @@ isDiv1Match match =
 divisionPlayers : DivisionStandings -> List String
 divisionPlayers division = 
   List.map (\ x -> x.player ) division.players
+
+sortedDivisionPlayers : DivisionStandings -> List String
+sortedDivisionPlayers = List.sort << divisionPlayers
+
+removeLastIfExists : List a -> List a
+removeLastIfExists list =
+  case reverse list of
+    []    -> []
+    _::xs -> reverse xs
+
 
 
 -- HTTP
